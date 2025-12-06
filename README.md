@@ -29,7 +29,7 @@ The server uses multiple threads to manage tasks at the same time:
 - One thread for the admin console → lets admins broadcast messages and view campus status.
 - Shared data (like client lists) is protected using a mutex, so threads don’t corrupt data.
 - 
-## Client
+### Client
 
 Each client runs background threads to:
 
