@@ -13,12 +13,12 @@ using namespace std;
 #define SERVER_IP "127.0.0.1"  // Change to actual server IP
 #define TCP_PORT 15000
 #define UDP_PORT 15001
-#define LOCAL_UDP_PORT 16000  // Port for receiving UDP broadcasts
 
 int tcp_socket_global;
 std::string my_campus;
 std::string my_department;
 std::atomic<bool> running(true);
+int my_udp_port; // Each client will have unique UDP port
 
 std::map<std::string, std::string> parse_msg(const std::string &msg) {
     std::map<std::string, std::string> fields;
@@ -93,17 +93,22 @@ void send_heartbeat() {
 void receive_udp_announcements() {
     int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
     
+    // Enable SO_REUSEADDR to help with binding
+    int opt = 1;
+    setsockopt(udp_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
     sockaddr_in local_addr;
     local_addr.sin_family = AF_INET;
     local_addr.sin_addr.s_addr = INADDR_ANY;
-    local_addr.sin_port = htons(LOCAL_UDP_PORT);
+    local_addr.sin_port = htons(my_udp_port);
     
     if (bind(udp_sock, (sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
-        cout << "[ERROR] Could not bind UDP socket for announcements\n";
+        cout << "[ERROR] Could not bind UDP socket for announcements on port " << my_udp_port << "\n";
+        perror("bind");
         return;
     }
     
-    cout << "[UDP Listener] Ready to receive announcements on port " << LOCAL_UDP_PORT << "\n";
+    cout << "[UDP Listener] Ready to receive announcements on port " << my_udp_port << "\n";
     
     char buffer[512];
     while (running) {
@@ -145,7 +150,7 @@ void display_menu() {
 
 void send_message_to_campus() {
     cout << "\n--- Send Message ---\n";
-    cout << "Available Campuses: Lahore, Karachi, Peshawar, Chiniot-Faisalabad, Multan\n";
+    cout << "Available Campuses: Lahore, Karachi, Peshawar, CFD, Multan\n";
     cout << endl;
     cout << "Enter destination campus: ";
     std::string to_campus;
@@ -185,6 +190,16 @@ int main() {
     int choice;
     cin >> choice;
     cout << endl;
+    
+    // Assign unique UDP port based on campus choice
+    std::map<int, int> campus_udp_ports = {
+        {1, 16001},  // Lahore
+        {2, 16002},  // Karachi
+        {3, 16003},  // Peshawar
+        {4, 16004},  // CFD
+        {5, 16005}   // Multan
+    };
+    
     std::map<int, std::pair<std::string, std::string>> campus_creds = {
         {1, {"Lahore", "NU-LHR-375"}},
         {2, {"Karachi", "NU-KHI-481"}},
@@ -200,6 +215,7 @@ int main() {
     
     my_campus = campus_creds[choice].first;
     std::string password = campus_creds[choice].second;
+    my_udp_port = campus_udp_ports[choice]; // Set unique UDP port
     
     cout << "Enter your department: ";
     cin.ignore();
@@ -217,8 +233,8 @@ int main() {
         return 1;
     }
     
-    // Send authentication
-    std::string auth = "AUTH|Campus=" + my_campus + "|Pass=" + password + "|UDPPort=" + to_string(LOCAL_UDP_PORT) + "|";
+    // Send authentication with unique UDP port
+    std::string auth = "AUTH|Campus=" + my_campus + "|Pass=" + password + "|UDPPort=" + to_string(my_udp_port) + "|";
     send(tcp_socket_global, auth.c_str(), auth.size(), 0);
     
     char buffer[128];
@@ -227,6 +243,7 @@ int main() {
     
     if (std::string(buffer).find("OK") != std::string::npos) {
         cout << "\n[SUCCESS] Connected to Islamabad Server as " << my_campus << "\n";
+        cout << "[INFO] UDP Port assigned: " << my_udp_port << "\n";
     } else {
         cout << "[ERROR] Authentication failed\n";
         close(tcp_socket_global);
